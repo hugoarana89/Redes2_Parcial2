@@ -170,6 +170,14 @@ flowchart TB
     RHQ1 -.-|"Gi4/0 ↔ Gi1/0 · 10.10.31.0/30 · REDUNDANTE"| RDC
 ```
 
+### Topología en Cisco Packet Tracer
+
+<div align="center">
+  <img src="img/topología.avif" alt="Topología completa en Cisco Packet Tracer" width="100%">
+  <p>Topología completa en Cisco Packet Tracer</p>
+</div>
+
+
 ### Tabla de conexiones (dispositivos, puertos y cables)
 
 | Origen | Puerto | Destino | Puerto | Cable |
@@ -763,6 +771,542 @@ Una vez aplicadas las configuraciones, se ejecutan los comandos de verificación
    > Se debe identificar la red remota de la sucursal precedida por el código **`R`**:  
    > `R 192.168.10.0/24 [120/1] via 10.10.12.2, GigabitEthernet3/0`  
    > Donde `120` representa la Distancia Administrativa de RIP y `1` corresponde al costo en saltos (*hop count*).
+
+#### 6.3.1. Evidencia Experimental de la Fase III
+Las capturas de consola confirman la correcta operación de RIPv2:
+* En `R-BRANCH1`, el protocolo opera sin auto-resumen y mantiene pasiva la interfaz LAN `Gi1/0`.
+* En `R-HQ1`, únicamente la interfaz `Gi3/0` intercambia tráfico RIP mientras las demás interfaces permanecen en estado pasivo.
+* En `R-HQ1`, la red `192.168.10.0/24` fue incorporada exitosamente a la tabla de enrutamiento con métrica de 1 salto y distancia administrativa de 120:
+```text
+R-HQ1#show ip route rip
+R    192.168.10.0/24 [120/1] via 10.10.12.2, 00:00:09, GigabitEthernet3/0
+```
+
+---
+
+## 7. Fase IV - OSPF en el Núcleo Corporativo (Área Única - Área 0)
+
+En esta fase se despliega el protocolo de enrutamiento por estado de enlace **OSPF (Open Shortest Path First)** con identificador de proceso `10` sobre los enrutadores `R-EDGE`, `R-HQ1`, `R-HQ2`, `R-BRANCH2` y `R-DATACENTER`. La totalidad de los enlaces del núcleo se agrupan en el **Área 0** (*Backbone Area*), cumpliendo con la asignación estricta de *Router IDs* y políticas de pasivación de interfaces hacia segmentos de usuario.
+
+Asimismo, se retiran las rutas estáticas internas temporales configuradas en la Fase II para permitir que la topología dinámica OSPF gestione el encaminamiento interno con Distancia Administrativa $AD = 110$, conservando la ruta estática por defecto en `R-EDGE` para su propagación dinámica.
+
+### 7.1. Tabla de Parámetros OSPF
+
+| Enrutador | Proceso | Router ID (RID) | Rol en la Red | Redes Anunciadas (con Wildcard) |
+| :--- | :---: | :---: | :--- | :--- |
+| **`R-EDGE`** | 10 | `3.3.3.3` | Borde y Salida WAN | `10.10.0.0 0.0.0.3`, `10.10.2.0 0.0.0.3` |
+| **`R-HQ1`** | 10 | `1.1.1.1` | Núcleo / Borde RIP | `10.10.0.0 0.0.0.3`, `10.10.1.0 0.0.0.3`, `10.10.31.0 0.0.0.3`, `192.168.110.0 0.0.0.255` |
+| **`R-HQ2`** | 10 | `2.2.2.2` | Núcleo y Backbone | `10.10.2.0 0.0.0.3`, `10.10.1.0 0.0.0.3`, `10.10.23.0 0.0.0.3`, `10.10.30.0 0.0.0.3`, `192.168.120.0 0.0.0.255` |
+| **`R-BRANCH2`**| 10 | `4.4.4.4` | Sucursal Corporativa | `10.10.23.0 0.0.0.3`, `192.168.30.0 0.0.0.255` |
+| **`R-DATACENTER`**| 10 | `5.5.5.5` | Servicios y Datacenter | `10.10.30.0 0.0.0.3`, `10.10.31.0 0.0.0.3`, `172.16.10.0 0.0.0.255`, `172.20.10.0 0.0.0.255` |
+
+---
+
+### 7.2. Configuración OSPF por Enrutador
+
+#### Router `R-EDGE` (Borde Corporativo)
+Se configura el proceso OSPF, se anuncia el tránsito hacia el núcleo y se inyecta la ruta por defecto hacia el ISP mediante `default-information originate`:
+```cisco
+enable
+configure terminal
+!
+router ospf 10
+ router-id 3.3.3.3
+ network 10.10.0.0 0.0.0.3 area 0
+ network 10.10.2.0 0.0.0.3 area 0
+ default-information originate
+ passive-interface GigabitEthernet2/0
+!
+end
+write memory
+```
+
+#### Router `R-HQ1` (Núcleo Casa Matriz 1)
+Se remueven las rutas estáticas internas de la prueba de Fase II y se activa OSPF en sus enlaces de núcleo, enlace redundante y LAN local:
+```cisco
+enable
+configure terminal
+!
+no ip route 172.16.10.0 255.255.255.0 10.10.1.2
+no ip route 172.16.10.0 255.255.255.0 10.10.31.2 130
+!
+router ospf 10
+ router-id 1.1.1.1
+ network 10.10.0.0 0.0.0.3 area 0
+ network 10.10.1.0 0.0.0.3 area 0
+ network 10.10.31.0 0.0.0.3 area 0
+ network 192.168.110.0 0.0.0.255 area 0
+ passive-interface GigabitEthernet2/0
+ passive-interface GigabitEthernet3/0
+!
+end
+write memory
+```
+
+#### Router `R-HQ2` (Núcleo Casa Matriz 2)
+Se remueven las rutas estáticas de tránsito de Fase II y se declaran todas las redes OSPF adyacentes:
+```cisco
+enable
+configure terminal
+!
+no ip route 172.16.10.0 255.255.255.0 10.10.30.2
+no ip route 192.168.110.0 255.255.255.0 10.10.1.1
+!
+router ospf 10
+ router-id 2.2.2.2
+ network 10.10.2.0 0.0.0.3 area 0
+ network 10.10.1.0 0.0.0.3 area 0
+ network 10.10.23.0 0.0.0.3 area 0
+ network 10.10.30.0 0.0.0.3 area 0
+ network 192.168.120.0 0.0.0.255 area 0
+ passive-interface GigabitEthernet2/0
+!
+end
+write memory
+```
+
+#### Router `R-BRANCH2` (Sucursal Sur OSPF)
+```cisco
+enable
+configure terminal
+!
+router ospf 10
+ router-id 4.4.4.4
+ network 10.10.23.0 0.0.0.3 area 0
+ network 192.168.30.0 0.0.0.255 area 0
+ passive-interface GigabitEthernet1/0
+!
+end
+write memory
+```
+
+#### Router `R-DATACENTER` (Data Center y Servicios)
+Se remueven las rutas estáticas de retorno de Fase II y se configuran las adyacencias OSPF en ambos enlaces WAN y en las dos redes LAN:
+```cisco
+enable
+configure terminal
+!
+no ip route 192.168.110.0 255.255.255.0 10.10.30.1
+no ip route 192.168.110.0 255.255.255.0 10.10.31.1 130
+!
+router ospf 10
+ router-id 5.5.5.5
+ network 10.10.30.0 0.0.0.3 area 0
+ network 10.10.31.0 0.0.0.3 area 0
+ network 172.16.10.0 0.0.0.255 area 0
+ network 172.20.10.0 0.0.0.255 area 0
+ passive-interface GigabitEthernet2/0
+ passive-interface GigabitEthernet3/0
+!
+end
+write memory
+```
+
+---
+
+### 7.3. Verificación y Diagnóstico de OSPF
+
+Para comprobar la correcta convergencia del dominio OSPF se emplean los comandos de auditoría en los enrutadores principales:
+
+1. **Adyacencias de Vecindad en R-HQ1 o R-HQ2:**
+   ```cisco
+   show ip ospf neighbor
+   ```
+   > Certifica que los estados de adyacencia alcancen la condición **`FULL`** (por ejemplo `FULL/DR`, `FULL/BDR` o `FULL/-` en enlaces punto a punto).
+
+2. **Rutas Aprendidas por OSPF en R-BRANCH2 o R-DATACENTER:**
+   ```cisco
+   show ip route ospf
+   ```
+   > Confirma la presencia de rutas identificadas con la letra **`O`** (métrica calculada por costo acumulado) y la ruta externa por defecto **`O*E2 0.0.0.0/0`** originada por `R-EDGE`.
+
+3. **Resumen de Interfaces y Costos en R-BRANCH2 o R-DATACENTER:**
+   ```cisco
+   show ip ospf interface brief
+   ```
+   > Lista cada interfaz activa en el proceso OSPF junto con su costo de enlace asignado por defecto ($Costo = 1$ en GigabitEthernet).
+
+#### 7.3.1. Evidencia Experimental de la Fase IV
+Las salidas obtenidas en consola confirman la formación completa y estable de adyacencias OSPF:
+* `R-HQ1` estableció adyacencias en estado **`FULL`** con `R-HQ2` (`2.2.2.2`), `R-DATACENTER` (`5.5.5.5`) y `R-EDGE` (`3.3.3.3`).
+* `R-HQ2` consolidó vecindades `FULL` con sus cuatro pares adyacentes (`5.5.5.5`, `4.4.4.4`, `3.3.3.3` y `1.1.1.1`).
+* `R-BRANCH2` y `R-DATACENTER` aprendieron dinámicamente todos los prefijos del núcleo corporativo con código **`O`** ($AD = 110$) y la ruta por defecto **`O*E2 0.0.0.0/0`** originada en `R-EDGE`.
+* `R-DATACENTER` registró balanceo de carga de igual costo (ECMP) hacia la red `10.10.1.0/30` y la ruta por defecto `0.0.0.0/0` a través de sus dos interfaces `Gi0/0` y `Gi1/0`, dado que ambos enlaces Gigabit poseen un costo unitario por defecto ($Costo = 1$).
+
+---
+
+## 8. Fase V - Integración entre Dominios y Comparación de Rutas
+
+Para garantizar la conectividad extremo a extremo entre todas las redes de área local sin recurrir a rutas estáticas manuales por cada subred, se implementa la **redistribución mutua de protocolos** en el enrutador fronterizo `R-HQ1`. Esta solución permite el intercambio dinámico de tablas de enrutamiento entre el dominio OSPF Área 0 y el dominio heredado RIPv2.
+
+### 8.1. Justificación del Punto de Integración (Reto de Alto Nivel)
+Se selecciona al enrutador **`R-HQ1`** como el **Punto de Integración y Borde de Sistema Autónomo (ASBR)** debido a que es el único dispositivo físico de la topología con presencia simultánea en ambos dominios:
+* Interfaz `Gi3/0` conectada directamente al enlace WAN de `R-BRANCH1` (dominio RIPv2).
+* Interfaces `Gi0/0`, `Gi1/0` y `Gi4/0` conectadas al núcleo corporativo (dominio OSPF Área 0).
+
+La técnica elegida es la **Redistribución Bidireccional Controlada**:
+1. **De RIPv2 hacia OSPF:** Permite que las redes de la sucursal norte (`192.168.10.0/24` y `10.10.12.0/30`) se inyecten en OSPF como rutas externas de tipo 2 (**`O E2`**), con máscara sin clase mediante el parámetro `subnets`.
+2. **De OSPF hacia RIPv2:** Dado que RIPv2 no interpreta la métrica de costo acumulado de OSPF, se inyecta una métrica semilla (*seed metric*) de saltos (`metric 2`), permitiendo a `R-BRANCH1` alcanzar todas las sedes y servicios corporativos. Asimismo, se propaga la ruta por defecto hacia la sucursal.
+
+---
+
+### 8.2. Análisis Técnico: Distancia Administrativa vs. Métrica Interna
+
+#### 1. Comparación de Parámetros por Protocolo
+
+| Protocolo | Distancia Administrativa (AD) | Tipo de Métrica | Límite / Rango | Comportamiento |
+| :--- | :---: | :--- | :--- | :--- |
+| **Ruta Estática** | 1 | No aplica (manual) | 0 | Máxima prioridad sobre protocolos dinámicos. |
+| **OSPF** | 110 | Costo acumulado ($\frac{10^8}{\text{Bandwidth}}$) | $1$ a $65,535$ | Selecciona el camino de mayor ancho de banda acumulado. |
+| **RIPv2** | 120 | Conteo de saltos (*Hop count*) | $1$ a $15$ ($16 = \infty$) | Selecciona el camino con menor cantidad de enrutadores. |
+
+#### 2. Diferencia entre Preferencia de Protocolo y Métrica Interna
+* **Preferencia de Protocolo (Nivel Superior):** Es dirimida exclusivamente por la **Distancia Administrativa (AD)**. Si un enrutador recibe anuncios para el mismo prefijo IP exacto a través de dos protocolos distintos (por ejemplo OSPF con $AD=110$ y RIP con $AD=120$), el enrutador elegirá siempre la ruta de menor AD (OSPF), descartando la comparación de sus métricas numéricas puesto que representan unidades incompatibles.
+* **Métrica Interna (Nivel Inferior):** Se evalúa únicamente entre rutas que provienen del **mismo protocolo**. Una vez que un protocolo gana el derecho a gobernar un prefijo, utiliza su algoritmo interno (costo en OSPF o saltos en RIP) para escoger el mejor camino o balancear la carga si las métricas coinciden.
+
+#### 3. Red Alcanzable por Más de un Mecanismo
+La ruta por defecto (`0.0.0.0/0`) constituye el ejemplo principal de convergencia multimecanismo:
+* En `R-EDGE`, está configurada como **ruta estática** (`S* 0.0.0.0/0 [1/0]`).
+* En el núcleo (`R-HQ1`, `R-HQ2`, `R-BRANCH2`, `R-DATACENTER`), es aprendida dinámicamente como **ruta externa OSPF** (`O*E2 0.0.0.0/0 [110/1]`).
+* En `R-BRANCH1`, es recibida mediante redistribución como **ruta RIP** (`R* 0.0.0.0/0 [120/2]`), garantizando salida integral hacia Internet desde cualquier punto de la empresa.
+
+---
+
+### 8.3. Configuración de Redistribución en `R-HQ1`
+
+En el enrutador frontera `R-HQ1`, se configuran las cláusulas de redistribución mutua:
+
+```cisco
+enable
+configure terminal
+!
+! 1. Redistribucion de RIPv2 hacia OSPF (con soporte de subredes CIDR)
+router ospf 10
+ redistribute rip subnets
+!
+! 2. Redistribucion de OSPF hacia RIPv2 (con metrica semilla de 2 saltos)
+router rip
+ redistribute ospf 10 metric 2
+ default-information originate
+!
+end
+write memory
+```
+
+---
+
+### 8.4. Verificación de Integración Extremo a Extremo
+
+1. **En `R-BRANCH2` o `R-DATACENTER` (Comprobar aprendizaje de la sucursal RIP):**
+   ```cisco
+   show ip route | include 192.168.10.0
+   ```
+   > Debe figurar la ruta externa OSPF:  
+   > `O E2  192.168.10.0/24 [110/20] via ...`  
+   > *(Código `O E2` confirma la inyección desde el dominio RIP con métrica externa fija de 20).*
+
+2. **En `R-BRANCH1` (Comprobar aprendizaje del núcleo OSPF):**
+   ```cisco
+   show ip route rip
+   ```
+   > Se deben observar las redes LAN remotas (`192.168.110.0/24`, `192.168.120.0/24`, `192.168.30.0/24`, `172.16.10.0/24`, `172.20.10.0/24`) precedidas por `R` con métrica de 2 saltos.
+
+3. **Prueba de Conectividad Extremo a Extremo (Ping de Host a Host):**
+   * Desde `PC-B1` (Sucursal RIP `192.168.10.10`) hacer ping hacia:
+     * `SERVER` (Data Center `172.16.10.10`)
+     * `PC-B2` (Sucursal OSPF `192.168.30.10`)
+     * `PC-HQ1` (Casa Matriz `192.168.110.10`)
+
+#### 8.4.1. Evidencia Experimental de la Fase V
+Las pruebas de laboratorio certifican la interoperabilidad completa entre dominios:
+* En `R-BRANCH2`, la red `192.168.10.0/24` de la sucursal heredada fue incorporada dinámicamente como ruta externa OSPF tipo 2 (`O E2`) con métrica 20 y distancia 110:
+```text
+R-BRANCH2#show ip route | include 192.168.10.0
+O E2 192.168.10.0/24 [110/20] via 10.10.23.1, 00:00:26, GigabitEthernet0/0
+```
+* En `R-BRANCH1`, el enrutador aprendió todos los prefijos del núcleo OSPF y la ruta por defecto con código `R` y métrica de 2 saltos:
+```text
+R-BRANCH1>show ip route rip
+R       172.16.10.0 [120/2] via 10.10.12.1, 00:00:26, GigabitEthernet0/0
+R    192.168.30.0/24 [120/2] via 10.10.12.1, 00:00:26, GigabitEthernet0/0
+R    192.168.110.0/24 [120/2] via 10.10.12.1, 00:00:26, GigabitEthernet0/0
+R    192.168.120.0/24 [120/2] via 10.10.12.1, 00:00:26, GigabitEthernet0/0
+R*   0.0.0.0/0 [120/1] via 10.10.12.1, 00:00:26, GigabitEthernet0/0
+```
+* Desde `PC-B1` (192.168.10.10), se ejecutaron pruebas de eco ICMP exitosas (0% de pérdida de paquetes tras la resolución ARP) hacia los servidores del Data Center (`172.16.10.10`), la sucursal OSPF (`192.168.30.10`) y Casa Matriz (`192.168.110.10`).
+
+---
+
+## 9. Fase VI - Redundancia, Costos OSPF y Simulación de Fallas
+
+Para comprobar la resiliencia y el cálculo de trayectorias basado en la métrica de costo en OSPF, se manipula el enlace redundante directo entre `R-HQ1` y `R-DATACENTER` (`10.10.31.0/30`), estableciendo una ruta preferida de bajo costo y una ruta alternativa de respaldo que asume el tráfico automáticamente ante una contingencia.
+
+### 9.1. Fundamento del Cálculo de Costos en OSPF
+
+El costo en OSPF es inversamente proporcional al ancho de banda de la interfaz:
+$$\text{Costo} = \frac{\text{Ancho de Banda de Referencia}}{\text{Ancho de Banda de la Interfaz}} = \frac{10^8}{10^8} = 1 \quad (\text{para GigabitEthernet})$$
+
+En estado inicial, tanto el enlace troncal (`R-HQ1` $\leftrightarrow$ `R-HQ2` $\leftrightarrow$ `R-DATACENTER`) como el enlace redundante directo (`R-HQ1` $\leftrightarrow$ `R-DATACENTER`) poseen un costo unitario por enlace ($Costo = 1$). Por consiguiente:
+* Camino vía enlace directo: $\text{Costo} = 1$.
+* Camino vía `R-HQ2`: $\text{Costo} = 1 + 1 = 2$.
+
+Para forzar a que el camino principal sea a través del núcleo corporativo (`R-HQ2`) y que el enlace directo funcione exclusivamente como respaldo, **se incrementa el costo OSPF del enlace directo a 50** (`ip ospf cost 50`) en ambos extremos:
+* Camino Principal (vía `R-HQ2`): $\text{Costo Total} = 1 + 1 = 2$.
+* Camino de Respaldo (enlace directo): $\text{Costo Total} = 50$.
+
+Dado que $2 < 50$, el algoritmo Dijkstra (*Shortest Path First*) selecciona invariablemente el tránsito a través de `R-HQ2`.
+
+---
+
+### 9.2. Configuración de Costos OSPF
+
+Se asigna el costo 50 en la interfaz `Gi4/0` de `R-HQ1` y en la interfaz `Gi1/0` de `R-DATACENTER`:
+
+#### Router `R-HQ1`
+```cisco
+enable
+configure terminal
+!
+interface GigabitEthernet4/0
+ ip ospf cost 50
+!
+end
+write memory
+```
+
+#### Router `R-DATACENTER`
+```cisco
+enable
+configure terminal
+!
+interface GigabitEthernet1/0
+ ip ospf cost 50
+!
+end
+write memory
+```
+
+---
+
+### 9.3. Protocolo de Prueba de Falla y Reconvergencia
+
+Se ejecuta la prueba de conmutación siguiendo el procedimiento estructurado:
+
+#### Paso 1: Verificación de Ruta Principal (Antes de la Falla)
+Desde la estación `PC-HQ1` (o desde la consola de `R-HQ1`), se rastrea el camino hacia la red de servidores (`172.16.10.10`):
+```text
+tracert 172.16.10.10
+```
+> El tráfico viaja a través del siguiente salto `10.10.1.2` (`R-HQ2`) y posteriormente a `10.10.30.2` (`R-DATACENTER`).
+
+#### Paso 2: Provocación de Falla Controlada
+Se desactiva la interfaz del enlace principal entre `R-HQ2` y `R-DATACENTER`:
+```cisco
+! En R-HQ2:
+enable
+configure terminal
+interface GigabitEthernet4/0
+ shutdown
+end
+```
+
+#### Paso 3: Observación de Reconvergencia Dinámica
+1. `R-HQ2` y `R-DATACENTER` detectan la caída del vecino OSPF por pérdida de paquetes *Hello*.
+2. Se inundan nuevos paquetes LSA (*Link-State Advertisements*) en el Área 0 notificando el cambio topológico.
+3. El algoritmo SPF se recalcula en `R-HQ1`, determinando que el camino de costo 2 ya no es viable y promoviendo la ruta alternativa con costo 51 vía `10.10.31.2` (`Gi4/0`).
+4. Al repetir el rastreo desde `PC-HQ1`:
+```text
+tracert 172.16.10.10
+```
+> El nuevo camino conmuta directamente hacia el enlace redundante (`10.10.31.2`), manteniendo la operatividad del servicio.
+
+#### Paso 4: Restauración del Enlace y Regreso al Camino Principal
+Se rehabilita la interfaz en `R-HQ2`:
+```cisco
+! En R-HQ2:
+enable
+configure terminal
+interface GigabitEthernet4/0
+ no shutdown
+end
+write memory
+```
+> Al restaurarse el enlace de costo 1, OSPF reconverge de forma transparente y reubica la trayectoria prioritaria a través de `R-HQ2` ($Costo = 2$).
+
+#### 9.3.1. Evidencia Experimental de la Fase VI
+Las capturas registradas en la consola de `PC-HQ1` confirman la conmutación y reconvergencia de la topología:
+
+* **Ruta antes de la falla (camino primario a través del núcleo `R-HQ2`):**
+```text
+C:\>tracert 172.16.10.10
+
+Tracing route to 172.16.10.10 over a maximum of 30 hops: 
+
+  1   0 ms      0 ms      0 ms      192.168.110.1
+  2   0 ms      0 ms      0 ms      10.10.1.2
+  3   0 ms      0 ms      0 ms      10.10.30.2
+  4   0 ms      0 ms      0 ms      172.16.10.10
+
+Trace complete.
+```
+
+* **Ruta durante la contingencia (`Gi4/0` de `R-HQ2` en estado `shutdown`):**
+```text
+C:\>tracert 172.16.10.10
+
+Tracing route to 172.16.10.10 over a maximum of 30 hops: 
+
+  1   0 ms      0 ms      0 ms      192.168.110.1
+  2   0 ms      0 ms      0 ms      10.10.31.2
+  3   0 ms      0 ms      0 ms      172.16.10.10
+
+Trace complete.
+```
+> Se evidencia que ante la pérdida de adyacencia OSPF en el camino primario, el flujo de paquetes conmutó de forma autónoma hacia el enlace directo de respaldo (`10.10.31.2`) en 3 saltos, preservando la disponibilidad del Data Center sin intervención manual.
+
+---
+
+## 10. Fase VII - Caso de IA Aplicada al Enrutamiento (AI Routing Advisor)
+
+En cumplimiento de los requerimientos de innovación del proyecto, se incorpora un prototipo de asistente técnico denominado **AI Routing Advisor**. Este modelo opera como un sistema de soporte a la toma de decisiones para el administrador de red, procesando salidas de diagnóstico de Cisco IOS y generando hipótesis estructuradas que el ingeniero debe validar técnicamente en la topología antes de su implementación.
+
+### 10.1. Matriz de Entradas y Objetivos de Análisis para la IA
+
+| Comando IOS de Entrada | Objetivo de Análisis para la IA | Criterio de Inspección |
+| :--- | :--- | :--- |
+| `show ip route` | Distinguir códigos de ruta (`O`, `R`, `S`, `S*`, `C`). | Identificar prefijo destino, siguiente salto (*next-hop*), distancia administrativa y métrica instalada. |
+| `show ip protocols` | Confirmar parámetros de operación de protocolos dinámicos. | Verificar IDs de proceso, redes declaradas, máscaras wildcard, filtros y estado de interfaces pasivas. |
+| `show ip ospf neighbor` | Comprobar formación y persistencia de adyacencias OSPF. | Detectar caídas de vecindad, vecinos en estado `INIT`, `EXSTART` o `2-WAY`, y verificar asignación de DR/BDR. |
+| `show ip interface brief` | Diagnosticar estado de capas física y de enlace. | Detectar interfaces en estado `administratively down`, `down/down` o sin direccionamiento IP asignado. |
+| `tracert` / `ping` | Mapear la trayectoria real de los paquetes en la red. | Identificar saltos anómalos, rutas asimétricas, pérdida de paquetes o bucles de enrutamiento (*routing loops*). |
+
+---
+
+### 10.2. Escenario Obligatorio de Evaluación: Acceso Intermitente al Data Center
+
+Durante la operación de la red, los usuarios de Casa Matriz reportan latencia excesiva y pérdida esporádica de paquetes al consultar los servidores corporativos en `172.16.10.10`.
+
+#### 1. Evidencia Recolectada en Consola (Entrada para la IA)
+```text
+R-HQ1#show ip route 172.16.10.0
+Routing entry for 172.16.10.0/24
+  Known via "ospf 10", distance 110, metric 51, type intra area
+  Last update from 10.10.31.2 on GigabitEthernet4/0, 00:01:15 ago
+  Routing Descriptor Blocks:
+  * 10.10.31.2, from 5.5.5.5, via GigabitEthernet4/0
+      Route metric is 51, traffic share count is 1
+
+R-HQ2#show ip ospf neighbor
+Neighbor ID     Pri   State           Dead Time   Address         Interface
+4.4.4.4           1   FULL/BDR        00:00:35    10.10.23.2      GigabitEthernet3/0
+3.3.3.3           1   FULL/DR         00:00:31    10.10.2.1       GigabitEthernet0/0
+1.1.1.1           1   FULL/BDR        00:00:32    10.10.1.1       GigabitEthernet1/0
+(Ausencia del vecino 5.5.5.5 en Gi4/0)
+
+R-HQ2#show ip interface brief GigabitEthernet4/0
+Interface              IP-Address      OK? Method Status                Protocol 
+GigabitEthernet4/0     10.10.30.1      YES manual administratively down down
+```
+
+#### 2. Hipótesis Diagnóstica Generada por la IA (AI Routing Advisor)
+1. **Protocolo Actual hacia el Destino:** OSPF Proceso 10, ruta intra-área con Distancia Administrativa 110.
+2. **Next-Hop Actual y Ruta Alternativa:** El tráfico cursa actualmente por el enlace de respaldo `10.10.31.2` (`Gi4/0` de `R-HQ1`) con métrica elevada de 51. La ruta óptima de menor costo ($Métrica = 3$) a través de `R-HQ2` (`10.10.1.2`) se encuentra inhabilitada.
+3. **Causa Probable de la Incidencia:** La interfaz `GigabitEthernet4/0` en `R-HQ2` fue colocada en estado administrativo `shutdown`, provocando la caída de la adyacencia OSPF con `R-DATACENTER` (`5.5.5.5`) y forzando a la red a operar sobre el enlace secundario saturado.
+4. **Comandos de Diagnóstico Recomendados:**
+   * `show ip interface GigabitEthernet4/0` en `R-HQ2`.
+   * `show ip ospf neighbor` en `R-DATACENTER`.
+5. **Acción Correctiva Propuesta:**
+   ```cisco
+   R-HQ2(config)#interface GigabitEthernet4/0
+   R-HQ2(config-if)#no shutdown
+   ```
+
+#### 3. Validación Técnica del Ingeniero y Análisis Crítico
+* **Parte Correcta de la Recomendación de IA:** La IA identificó certeramente el estado de la interfaz `Gi4/0` como la causa raíz de la contingencia y reconoció la existencia de la ruta alternativa de costo 51.
+* **Vacíos o Limitaciones de la IA:** La IA no determinó de forma autónoma si la interfaz fue apagada intencionalmente por mantenimiento o por error humano; asimismo, no verificó el temporizador de reconvergencia OSPF (*Dead Interval*) ni la integridad de la capa 1 (cable físico desconectado).
+* **Conclusión Técnica:** Se comprueba que **la Inteligencia Artificial actúa eficazmente como acelerador de diagnóstico e hipótesis preliminar, pero jamás debe sustituir el juicio crítico y la validación manual del administrador de red**, dado que aplicar correcciones automatizadas sin verificar el contexto operativo puede desencadenar bucles o exponer segmentos en mantenimiento.
+
+---
+
+## 11. Guía Metodológica de Troubleshooting Oculto (Fase VIII)
+
+Ante eventuales perturbaciones introducidas en la configuración sin previo aviso durante la evaluación docente, se establece una metodología de aislamiento y resolución rápida:
+
+```mermaid
+flowchart TD
+    Inicio["Falla Reportada"] --> Paso1["1. show ip interface brief<br/>(Verificar Up/Up e IPs correctas)"]
+    Paso1 --> Paso2["2. show ip protocols<br/>(Verificar redes declaradas y wildcards)"]
+    Paso2 --> Paso3["3. show ip ospf neighbor<br/>(Verificar adyacencias FULL)"]
+    Paso3 --> Paso4["4. show ip route<br/>(Inspeccionar códigos O, R, S, S*)"]
+    Paso4 --> Paso5["5. traceroute<br/>(Ubicar el enrutador donde se corta el flujo)"]
+```
+
+### Protocolo de Resolución Inmediata por Tipo de Incidencia
+
+| Perturbación Docente Posible | Comando de Detección | Comando de Corrección Inmediata |
+| :--- | :--- | :--- |
+| **1. Eliminación de `network` en RIP** | `show ip protocols` en `R-BRANCH1` o `R-HQ1` | `router rip` $\rightarrow$ `network 10.0.0.0` o `network 192.168.10.0` |
+| **2. Wildcard OSPF incorrecta** | `show ip protocols` / `show running-config` | `router ospf 10` $\rightarrow$ corregir `network X.X.X.X 0.0.0.3 area 0` |
+| **3. Interfaz física apagada** | `show ip interface brief` (busca `admin down`) | `interface GiX/0` $\rightarrow$ `no shutdown` |
+| **4. Gateway o máscara errónea en PC** | Inspección en `IP Configuration` | Ajustar máscara `/24` (`255.255.255.0`) y Gateway `.1` |
+| **5. Modificación de ruta estática** | `show running-config \| include ip route` | Reconfigurar `ip route 0.0.0.0 0.0.0.0 200.10.10.2` en `R-EDGE` |
+| **6. Eliminación de `no auto-summary`** | `show ip protocols` (muestra summarization in effect) | `router rip` $\rightarrow$ `no auto-summary` |
+| **7. Discrepancia en IP de enlace WAN** | `ping <IP-vecino>` falla / `show ip interface brief` | Asignar la IP correcta según la tabla `/30` y aplicar `no shutdown` |
+| **8. Alteración indebida de costo OSPF** | `show ip ospf interface brief` (costo $\neq$ esperado) | `interface GiX/0` $\rightarrow$ `no ip ospf cost` o `ip ospf cost 50` |
+
+---
+
+## 12. Cuestionario Técnico de Defensa (12 Preguntas Clave)
+
+A continuación se fundamentan técnicamente las 12 preguntas de defensa estipuladas en la guía del proyecto:
+
+#### 1. ¿Por qué OSPF es más adecuado para el núcleo que RIP?
+> OSPF es un protocolo de estado de enlace (*link-state*) sin límite de diámetro, con convergencia prácticamente instantánea mediante algoritmos SPF (Dijkstra), soporte jerárquico por áreas y métrica basada en ancho de banda real. En contraste, RIP es un protocolo por vector de distancias que converge lentamente, tiene un límite estricto de 15 saltos y genera sobrecarga periódica innecesaria al difundir su tabla completa cada 30 segundos.
+
+#### 2. ¿Qué métrica utiliza RIP y cuál es su límite?
+> RIP utiliza como única métrica el **conteo de saltos** (*hop count*). Su límite máximo operativo es de **15 saltos**. Una métrica de **16 saltos** se define convencionalmente como infinito o red inalcanzable (*unreachable*), técnica empleada para prevenir bucles de enrutamiento (*split horizon* con *poison reverse*).
+
+#### 3. ¿Qué representa el costo en OSPF?
+> El costo en OSPF es un valor adimensional inversamente proporcional al ancho de banda de la interfaz, calculado mediante la fórmula: $\text{Costo} = \frac{\text{Ancho de Banda de Referencia}}{\text{Ancho de Banda de la Interfaz}}$. Representa el "esfuerzo" o retardo asociado al envío de paquetes a través de dicho enlace; a mayor velocidad, menor costo y mayor preferencia en la ruta calculada por Dijkstra.
+
+#### 4. ¿Cuál es la diferencia entre métrica y distancia administrativa?
+> La **Distancia Administrativa (AD)** evalúa la confiabilidad entre **distintas fuentes o protocolos de enrutamiento** (ej. Estática = 1, OSPF = 110, RIP = 120); a menor AD, el protocolo tiene prioridad absoluta para instalar su ruta en la tabla de enrutamiento. La **Métrica**, en cambio, se utiliza internamente dentro del **mismo protocolo** para comparar y elegir entre múltiples caminos hacia un mismo destino una vez que el protocolo ha sido seleccionado.
+
+#### 5. ¿Por qué una ruta estática puede ser preferida a una ruta RIP?
+> Porque la ruta estática posee una Distancia Administrativa por defecto de **$AD = 1$**, mientras que RIP posee una distancia de **$AD = 120$**. Cisco IOS evalúa primero la distancia administrativa; al ser $1 < 120$, el enrutador instala obligatoriamente la ruta estática y descarta la ruta RIP para la tabla de reenvío activa.
+
+#### 6. ¿Cómo se convierte una ruta estática en ruta flotante?
+> Se convierte asignándole manualmente una Distancia Administrativa superior a la del protocolo de enrutamiento dinámico principal que opera en la red. En nuestro proyecto, se configuró `ip route 172.16.10.0 255.255.255.0 10.10.31.2 130`. Al tener $AD = 130$ (superior a los $110$ de OSPF y $120$ de RIP), permanece latente en la configuración y solo se instala cuando la ruta principal desaparece de la tabla de enrutamiento.
+
+#### 7. ¿Qué ocurre cuando un vecino OSPF deja de estar disponible?
+> Al expirar el temporizador de tiempo muerto (*Dead Interval*, típicamente 40 segundos sin recibir paquetes *Hello*), el enrutador local declara al vecino en estado `DOWN`. Inmediatamente genera un nuevo paquete de actualización de estado de enlace (*LSA Type 1 Router LSA*) informando la pérdida del enlace, lo inunda hacia todos los demás enrutadores del Área 0 y cada enrutador reejecuta el algoritmo SPF para recalcular caminos alternativos de forma transparente.
+
+#### 8. ¿Cómo se verifica una adyacencia OSPF?
+> Se verifica ejecutando en modo privilegiado el comando:
+> ```cisco
+> show ip ospf neighbor
+> ```
+> El campo `State` debe indicar **`FULL/DR`**, **`FULL/BDR`** o **`FULL/-`** (en enlaces punto a punto). Cualquier estado como `ATTEMPT`, `INIT`, `2-WAY` o `EXSTART` prolongado indica fallas de negociación (diferencias de MTU, temporizadores o subred).
+
+#### 9. ¿Qué función cumple `no auto-summary` en RIPv2?
+> Inhabilita la sumarización automática de redes hacia sus límites con clase (*classful boundaries* de Clase A, B o C). Esto permite que RIPv2 opere en modo sin clase (*classless* / CIDR), transmitiendo la máscara de subred real en cada actualización y permitiendo enrutar correctamente subredes de longitud variable como `/24` o `/30` en redes discontinuas.
+
+#### 10. ¿Puede una IA reemplazar a OSPF? Justifique.
+> **No.** OSPF opera en el plano de control (*control plane*) y de reenvío (*data plane*) de los enrutadores en tiempo de ejecución, procesando paquetes a nivel de microsegundos mediante hardware especializado (ASICs) con garantías deterministas de convergencia matemática sin bucles. Una IA opera en el plano de gestión (*management plane*) a nivel de segundos, ofreciendo análisis predictivo, optimización de políticas y correlación de fallas, pero carece de la velocidad, determinismo, tolerancia a particiones de red y soporte distribuido en tiempo real que exige el enrutamiento de paquetes IP.
+
+#### 11. ¿Qué salidas de IOS son más útiles para diagnosticar una falla de enrutamiento?
+> 1. `show ip route`: Para comprobar si el prefijo destino está instalado, qué protocolo lo aprendió y cuál es el next-hop activo.
+> 2. `show ip interface brief`: Para descartar rápidamente interfaces caídas (`down`) o con direcciones IP equivocadas.
+> 3. `show ip protocols`: Para verificar que las redes declaradas, wildcards e interfaces pasivas coincidan con el diseño.
+> 4. `show ip ospf neighbor`: Para confirmar la integridad de las adyacencias dinámicas.
+> 5. `traceroute`: Para identificar el nodo exacto en el que se descartan los paquetes.
+
+#### 12. ¿Por qué una recomendación de IA debe validarse antes de aplicarse?
+> Porque los modelos de IA son probabilísticos y propensos a alucinaciones técnicas cuando analizan salidas incompletas; además, desconocen el contexto operativo y los acuerdos de nivel de servicio (SLA) de la organización. Aplicar comandos recomendados por una IA sin supervisión humana puede provocar caídas catastróficas del servicio, aislar enrutadores al modificar interfaces de administración remota o introducir vulnerabilidades de seguridad en el sistema autónomo.
+
+
+
+
 
 
 
