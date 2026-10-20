@@ -63,7 +63,11 @@ El proyecto abarca el direccionamiento IPv4 personalizado con $D = 10$ (subredes
 | Switch 5 | Catalyst 2960-24TT | `SW-SRV` | Segmento Servidores Data Center |
 | Switch 6 | Catalyst 2960-24TT | `SW-ADM` | Segmento Administración Data Center |
 | Servidor | Server-PT | `SERVER` | Servidor corporativo Data Center |
+| Nube | Cloud-PT | `Internet` | Simulación de nube externa / salida a Internet pública |
 | PCs (5) | PC-PT | `PC-HQ1`, `PC-HQ2`, `PC-B1`, `PC-B2`, `PC-ADM` | Hosts finales para pruebas de conectividad y traceroute |
+
+> **Nota técnica de hardware en Packet Tracer:**  
+> Por defecto, los dispositivos `Router-PT` cargan módulos genéricos mixtos (FastEthernet y Serial). Para estandarizar toda la red corporativa en **Gigabit Ethernet de cobre (RJ-45)**, evitar cables de fibra y no depender de transceptores SFP adicionales, se retiraron los módulos predeterminados de cada router y se instalaron tarjetas modulares **`PT-ROUTER-NM-1CGE`** (Single-Port Copper Gigabit Ethernet), garantizando interfaces Gigabit enrutadas puras para todos los enlaces WAN y LAN.
 
 ---
 
@@ -158,7 +162,7 @@ flowchart TB
         SWADM ---|"Fa0/2"| PCADM
     end
 
-    CLOUD --- ISP
+    CLOUD ---|"Ethernet6 ↔ Gi1/0 · Copper Straight-Through"| ISP
     ISP ===|"Gi0/0 ↔ Gi2/0 · 200.10.10.0/30"| REDGE
     RHQ1 ---|"Gi3/0 ↔ Gi0/0 · 10.10.12.0/30 (RIPv2)"| RB1
     RHQ2 ---|"Gi3/0 ↔ Gi0/0 · 10.10.23.0/30 (OSPF)"| RB2
@@ -170,6 +174,7 @@ flowchart TB
 
 | Origen | Puerto | Destino | Puerto | Cable |
 |:--|:--|:--|:--|:--|
+| Cloud-PT `Internet` | `Ethernet6` | Router-PT `ISP` | `Gi1/0` | Copper Straight-Through |
 | Router-PT `ISP` | `Gi0/0` | Router-PT `R-EDGE` | `Gi2/0` | Copper Cross-Over |
 | Router-PT `R-EDGE` | `Gi0/0` | Router-PT `R-HQ1` | `Gi0/0` | Copper Cross-Over |
 | Router-PT `R-EDGE` | `Gi1/0` | Router-PT `R-HQ2` | `Gi0/0` | Copper Cross-Over |
@@ -192,3 +197,150 @@ flowchart TB
 | 2960 `SW-ADM` | `Fa0/2` | PC-PT `PC-ADM` | `Fa0` | Copper Straight-Through |
 
 > Los enlaces entre equipos de capa 3 usan cable **cruzado** y los enlaces router–switch y switch–host usan cable **directo**.
+
+---
+
+## 4. Fase I - Configuración Inicial y Direccionamiento
+
+### 4.1. Asignación de Hostnames y Parámetros Básicos
+
+Se establece la identidad de cada dispositivo en la topología mediante el comando `hostname`, además de inhabilitar la resolución de nombres por DNS (`no ip domain-lookup`) para evitar bloqueos por errores tipográficos en la consola. Cada bloque de configuración concluye con la persistencia en la memoria no volátil (`write memory`).
+
+#### 4.1.1. Routers
+
+##### Router `ISP`
+```cisco
+enable
+configure terminal
+hostname ISP
+no ip domain-lookup
+end
+write memory
+```
+
+##### Router `R-EDGE`
+```cisco
+enable
+configure terminal
+hostname R-EDGE
+no ip domain-lookup
+end
+write memory
+```
+
+##### Router `R-HQ1`
+```cisco
+enable
+configure terminal
+hostname R-HQ1
+no ip domain-lookup
+end
+write memory
+```
+
+##### Router `R-HQ2`
+```cisco
+enable
+configure terminal
+hostname R-HQ2
+no ip domain-lookup
+end
+write memory
+```
+
+##### Router `R-BRANCH1`
+```cisco
+enable
+configure terminal
+hostname R-BRANCH1
+no ip domain-lookup
+end
+write memory
+```
+
+##### Router `R-BRANCH2`
+```cisco
+enable
+configure terminal
+hostname R-BRANCH2
+no ip domain-lookup
+end
+write memory
+```
+
+##### Router `R-DATACENTER`
+```cisco
+enable
+configure terminal
+hostname R-DATACENTER
+no ip domain-lookup
+end
+write memory
+```
+
+---
+
+#### 4.1.2. Switches de Acceso (Cisco Catalyst 2960)
+
+##### Switch `SW-HQ1`
+```cisco
+enable
+configure terminal
+hostname SW-HQ1
+no ip domain-lookup
+end
+write memory
+```
+
+##### Switch `SW-HQ2`
+```cisco
+enable
+configure terminal
+hostname SW-HQ2
+no ip domain-lookup
+end
+write memory
+```
+
+##### Switch `SW-B1`
+```cisco
+enable
+configure terminal
+hostname SW-B1
+no ip domain-lookup
+end
+write memory
+```
+
+##### Switch `SW-B2`
+```cisco
+enable
+configure terminal
+hostname SW-B2
+no ip domain-lookup
+end
+write memory
+```
+
+##### Switch `SW-SRV`
+```cisco
+enable
+configure terminal
+hostname SW-SRV
+no ip domain-lookup
+end
+write memory
+```
+
+##### Switch `SW-ADM`
+```cisco
+enable
+configure terminal
+hostname SW-ADM
+no ip domain-lookup
+end
+write memory
+```
+
+---
+
