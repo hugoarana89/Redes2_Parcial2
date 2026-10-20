@@ -1304,10 +1304,196 @@ A continuación se fundamentan técnicamente las 12 preguntas de defensa estipul
 #### 12. ¿Por qué una recomendación de IA debe validarse antes de aplicarse?
 > Porque los modelos de IA son probabilísticos y propensos a alucinaciones técnicas cuando analizan salidas incompletas; además, desconocen el contexto operativo y los acuerdos de nivel de servicio (SLA) de la organización. Aplicar comandos recomendados por una IA sin supervisión humana puede provocar caídas catastróficas del servicio, aislar enrutadores al modificar interfaces de administración remota o introducir vulnerabilidades de seguridad en el sistema autónomo.
 
+---
 
+## 13. Evidencias del Proyecto (Capturas de Pantalla)
 
+A continuación se presentan las capturas de pantalla de los comandos y pruebas ejecutadas en la topología de Cisco Packet Tracer que sustentan el cumplimiento de los requerimientos técnicos del proyecto:
 
+1. **Topología completa con etiquetas de red.** En el lienzo de trabajo de Cisco Packet Tracer se documentó la topología física y lógica con todas sus etiquetas de direccionamiento IP y enlaces activos en verde.
 
+<div align="center">
+  <img src="img/topología_puertos.avif" alt="Captura: Topología completa en Cisco Packet Tracer con etiquetas de red e interfaces activas" width="100%">
+  <p>Topología completa en Cisco Packet Tracer con enlaces activos y rotulado de subredes</p>
+</div>
 
+2. **Estado operativo de interfaces y direccionamiento.** En `R-HQ1` se ejecutó el comando `show ip interface brief`.
 
+<div align="center">
+  <img src="img/evidencia2_interfaces.avif" alt="Captura: Interfaces en R-HQ1 con estado up/up y direcciones IP asignadas" width="100%">
+  <p>Interfaces de `R-HQ1` en estado `up/up` con direccionamiento IP verificado</p>
+</div>
+
+3. **Tabla de enrutamiento en el router principal.** En `R-HQ1` se ejecutó el comando `show ip route`.
+
+<div align="center">
+  <img src="img/evidencia3_route.avif" alt="Captura: Tabla de enrutamiento global en R-HQ1 con rutas C, O y R" width="100%">
+  <p>Tabla de enrutamiento global en `R-HQ1` evidenciando rutas locales, OSPF y RIP</p>
+</div>
+
+4. **Protocolos de enrutamiento activos y parámetros.** En `R-HQ1` se ejecutó el comando `show ip protocols`.
+
+<div align="center">
+  <img src="img/evidencia4_protocols.avif" alt="Captura: Parámetros de RIPv2 y OSPF 10, interfaces pasivas y no auto-summary en R-HQ1" width="100%">
+  <p>Parámetros de operación de RIPv2 y OSPF 10 con interfaces pasivas en `R-HQ1`</p>
+</div>
+
+5. **Adyacencias de vecindad OSPF en el núcleo.** En `R-HQ1` se ejecutó el comando `show ip ospf neighbor`.
+
+<div align="center">
+  <img src="img/evidencia5_neighbor.avif" alt="Captura: Vecinos OSPF en R-HQ1 en estado FULL/DR y FULL/BDR" width="100%">
+  <p>Adyacencias OSPF en `R-HQ1` con vecinos `2.2.2.2`, `5.5.5.5` y `3.3.3.3` en estado `FULL`</p>
+</div>
+
+6. **Pruebas de conectividad ICMP entre LANs remotas.** En la estación `PC-B1` (Sucursal RIP) se ejecutaron los comandos `ping 172.16.10.10` y `ping 192.168.30.10`.
+
+<div align="center">
+  <img src="img/evidencia6_pings.avif" alt="Captura: Pings exitosos con 0% de pérdida desde PC-B1 hacia Data Center y Sucursal Sur" width="100%">
+  <p>Conectividad extremo a extremo comprobada con eco ICMP exitoso (0% de pérdida) desde `PC-B1`</p>
+</div>
+
+7. **Trazado de ruta hacia el Data Center en condiciones normales.** En la estación `PC-HQ1` se ejecutó el comando `tracert 172.16.10.10`.
+
+<div align="center">
+  <img src="img/evidencia7_tracert.avif" alt="Captura: Tracert desde PC-HQ1 mostrando 4 saltos a través del camino principal por R-HQ2" width="100%">
+  <p>Trayectoria principal hacia el servidor en 4 saltos cruzando por el núcleo `R-HQ2` (`10.10.1.2`)</p>
+</div>
+
+8. **Rutas aprendidas por el protocolo RIPv2.** En `R-HQ1` se ejecutó el comando `show ip route rip`.
+
+<div align="center">
+  <img src="img/evidencia8_rip.avif" alt="Captura: Ruta R 192.168.10.0/24 con distancia 120 y métrica de 1 salto en R-HQ1" width="100%">
+  <p>Ruta aprendida por RIPv2 (`192.168.10.0/24`) con distancia administrativa 120 y métrica de 1 salto</p>
+</div>
+
+9. **Rutas dinámicas y externas del protocolo OSPF.** En `R-BRANCH2` se ejecutó el comando `show ip route ospf`.
+
+<div align="center">
+  <img src="img/evidencia9_ospf.avif" alt="Captura: Prefijos O y ruta externa redistribuida O E2 en R-BRANCH2" width="100%">
+  <p>Prefijos internos `O` y ruta externa redistribuida `O E2` de la sucursal heredada en `R-BRANCH2`</p>
+</div>
+
+10. **Ruta estática por defecto hacia el proveedor (ISP).** En `R-EDGE` se ejecutó el comando `show ip route static`.
+
+<div align="center">
+  <img src="img/evidencia10_default_route.avif" alt="Captura: Ruta por defecto S* 0.0.0.0/0 vía 200.10.10.2 en R-EDGE" width="100%">
+  <p>Ruta estática por defecto (`0.0.0.0/0`) en `R-EDGE` apuntando hacia el enrutador `ISP`</p>
+</div>
+
+11. **Ruta estática específica y activación de ruta estática flotante ante falla.** Para documentar la resiliencia mediante Distancia Administrativa en `R-HQ1`, se configuran la ruta estática principal ($AD = 1$) y la ruta flotante ($AD = 130$) asociadas a las interfaces físicas de salida. Dado que OSPF opera activamente con $AD = 110$, se incrementa temporalmente la distancia de OSPF a 150 para que la ruta flotante con $AD = 130$ sea promovida y visible en la tabla de enrutamiento.
+
+* **11.1. Estado normal (Ruta estática principal instalada con $AD = 1$):**  
+  En `R-HQ1` se aplicaron las rutas asociadas a sus interfaces físicas de salida:
+  ```cisco
+  enable
+  configure terminal
+  ip route 172.16.10.0 255.255.255.0 GigabitEthernet1/0
+  ip route 172.16.10.0 255.255.255.0 GigabitEthernet4/0 130
+  end
+  ```
+  Al ejecutar `show ip route static`, se observa la ruta principal activa con distancia 1, junto con la ruta flotante con distancia 130 definida por la interfaz de respaldo:
+  ```cisco
+  show ip route static
+  ```
+
+<div align="center">
+  <img src="img/evidencia11_1_estatica_principal.avif" alt="Captura: Ruta estática principal instalada en R-HQ1 con AD 1 vía GigabitEthernet1/0" width="100%">
+  <p>Ruta estática principal activa en `R-HQ1` con Distancia Administrativa 1 (`[1/0]` conectada directamente por `GigabitEthernet1/0`)</p>
+</div>
+
+* **11.2. Estado en contingencia (Activación de la ruta estática flotante con $AD = 130$):**  
+  Se apaga la interfaz principal `Gi1/0` y se incrementa temporalmente la Distancia Administrativa de OSPF a 150, de modo que la ruta flotante con $AD = 130$ resulte preferida ($130 < 150$) y sea instalada en la tabla de enrutamiento activa:
+  ```cisco
+  configure terminal
+  interface GigabitEthernet1/0
+   shutdown
+  router ospf 10
+   distance 150
+  end
+  ```
+  Al ejecutar `show ip route static`, la ruta flotante es promovida e instalada con $AD = 130$:
+  ```cisco
+  show ip route static
+  ```
+
+<div align="center">
+  <img src="img/evidencia11_2_flotante_activada.avif" alt="Captura: Ruta flotante instalada en R-HQ1 con AD 130 vía GigabitEthernet4/0 con OSPF en distancia 150" width="100%">
+  <p>Ruta estática flotante promovida a la RIB con Distancia Administrativa 130 (`[130/0]` por `GigabitEthernet4/0`)</p>
+</div>
+
+* **11.3. Restaurar completamente la topología a su estado operativo normal:**  
+  Se vuelve a encender `Gi1/0`, se restaura la Distancia Administrativa de OSPF a su valor por defecto (110) y se eliminan las rutas estáticas temporales para que OSPF retome el control del enrutamiento dinámico:
+  ```cisco
+  configure terminal
+  interface GigabitEthernet1/0
+   no shutdown
+  router ospf 10
+   no distance 150
+  no ip route 172.16.10.0 255.255.255.0 GigabitEthernet1/0
+  no ip route 172.16.10.0 255.255.255.0 GigabitEthernet4/0 130
+  end
+  write memory
+  ```
+  > Tras la restauración, OSPF retoma su $AD = 110$ y la red `172.16.10.0/24` vuelve a ser gobernada dinámicamente. El comando `show ip route static` debe quedar vacío, confirmando que no existen rutas estáticas activas residuales.
+
+12. **Conmutación y reconvergencia de ruta ante contingencia en OSPF.** Se comprueba la conmutación de tráfico en la estación de trabajo `PC-HQ1` hacia el servidor `172.16.10.10`:
+
+* **12.1. Trazado en estado normal (Camino principal por núcleo OSPF):**  
+  En `PC-HQ1` se ejecutó `tracert 172.16.10.10`, registrando 4 saltos a través de `R-HQ2`:
+
+<div align="center">
+  <img src="img/evidencia12_1_tracert_normal.avif" alt="Captura: Tracert normal en PC-HQ1 mostrando 4 saltos vía 10.10.1.2 y 10.10.30.2" width="100%">
+  <p>Trazado de ruta en operación normal: 4 saltos pasando por el núcleo `R-HQ2` (`10.10.1.2`)</p>
+</div>
+
+* **12.2. Trazado durante la falla controlada (Reconvergencia al enlace redundante):**  
+  Se apaga la interfaz `GigabitEthernet4/0` de `R-HQ2` (enlace principal hacia `R-DATACENTER`) para simular la contingencia. En `R-HQ2` se ejecuta:
+  ```cisco
+  enable
+  configure terminal
+  interface GigabitEthernet4/0
+   shutdown
+  end
+  ```
+  Inmediatamente se repite en `PC-HQ1` el comando:
+  ```text
+  tracert 172.16.10.10
+  ```
+  El tráfico conmuta transparentemente al enlace redundante directo en 3 saltos vía `10.10.31.2`:
+
+<div align="center">
+  <img src="img/evidencia12_2_tracert_falla.avif" alt="Captura: Tracert en contingencia en PC-HQ1 mostrando 3 saltos directo vía 10.10.31.2" width="100%">
+  <p>Trazado de ruta en contingencia: conmutación transparente a 3 saltos por el enlace redundante directo (`10.10.31.2`)</p>
+</div>
+
+* **12.3. Restauración del enlace principal en `R-HQ2`:**  
+  Tras capturar la evidencia de contingencia, se rehabilita la interfaz en `R-HQ2`:
+  ```cisco
+  enable
+  configure terminal
+  interface GigabitEthernet4/0
+   no shutdown
+  end
+  write memory
+  ```
+  OSPF reconverge de forma automática y el tráfico regresa al camino principal de 4 saltos a través del núcleo `R-HQ2`.
+
+---
+
+## 14. Conclusiones Técnicas del Proyecto
+
+1. **Jerarquía y Coexistencia Multidominio:**  
+   Se demostró que la coexistencia de protocolos disímiles (RIPv2 y OSPF) es técnicamente viable mediante la redistribución controlada en un enrutador de frontera (ASBR). La asignación de métricas semilla adecuadas en RIP ($2\text{ saltos}$) y la propagación de subredes con clase variable (`subnets`) en OSPF evitaron la formación de agujeros negros de enrutamiento (*black holes*) y aseguraron la convergencia de extremo a extremo sin saturar los enlaces WAN con rutas estáticas redundantes.
+
+2. **Gobernanza de la Distancia Administrativa sobre la Métrica:**  
+   Se comprobó empíricamente que la Distancia Administrativa constituye el primer y más determinante criterio de selección de rutas en Cisco IOS. Mientras existan rutas con menor AD ($AD=1$ en estáticas o $AD=110$ en OSPF), las rutas con mayor AD ($AD=120$ en RIP o $AD=130$ en rutas flotantes) permanecen inactivas en la memoria del enrutador, garantizando un mecanismo predecible de respaldo automático sin colisiones operativas.
+
+3. **Optimización de Trayectorias mediante Manipulación de Costos OSPF:**  
+   A través del ajuste explícito del costo de enlace (`ip ospf cost 50`) en la interfaz redundante directa `R-HQ1` $\leftrightarrow$ `R-DATACENTER`, se forzó al algoritmo Dijkstra a preferir la trayectoria troncal de núcleo a través de `R-HQ2` ($Costo = 3$), reservando el camino secundario exclusivamente para situaciones de emergencia, lo que previene la degradación prematura de enlaces de respaldo de menor capacidad.
+
+4. **Resiliencia y Alta Disponibilidad Demostrada:**  
+   Las pruebas de simulación de falla controlada mediante deshabilitación de interfaces principales (`shutdown` en `Gi4/0` de `R-HQ2`) evidenciaron la capacidad de autorecuperación del protocolo OSPF. Al perderse los paquetes de saludo (*Hello*), la red reconvergió en cuestión de segundos, recalculando las LSAs y desviando el flujo de datos hacia el enlace redundante sin que los usuarios finales experimentaran una pérdida permanente de servicio.
+
+5. **Rol Complementario y Supervisado de la Inteligencia Artificial:**  
+   La integración del modelo de IA como asistente de enrutamiento (*AI Routing Advisor*) demostró ser un acelerador de alto valor en la correlación de salidas complejas de Cisco IOS (`show ip route`, `show ip protocols`, `show ip ospf neighbor`). Sin embargo, se ratifica que los sistemas inteligentes deben circunscribirse estrictamente al plano de recomendación e hipótesis, manteniendo la supervisión humana y la validación técnica en el plano de ejecución para salvaguardar la integridad de infraestructuras críticas.
 
