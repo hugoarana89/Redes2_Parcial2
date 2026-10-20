@@ -750,7 +750,7 @@ write memory
 
 Una vez aplicadas las configuraciones, se ejecutan los comandos de verificación para constatar la operación del protocolo:
 
-1. **Parámetros y Redes Anunciadas:**
+1. **Parámetros y Redes Anunciadas en `R-BRANCH1` y `R-HQ1`:**
    ```cisco
    show ip protocols
    ```
